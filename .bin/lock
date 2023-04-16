@@ -1,0 +1,10 @@
+#!/bin/bash
+
+pidof i3lock > /dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+	exit
+fi
+
+media_buttons.sh pause
+maim | convert - -scale 10% -colorspace GRAY -scale 1000% /tmp/lock.png
+i3lock -i /tmp/lock.png -u

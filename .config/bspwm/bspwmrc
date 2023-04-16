@@ -1,0 +1,39 @@
+#! /bin/sh
+
+if [[ -f "${HOME}/.config/bspwm/monitors.sh" ]]; then
+	. ${HOME}/.config/bspwm/monitors.sh
+
+	set_monitor
+fi
+
+#setxkbmap -layout lv,ru -variant ,winkeys -option grp:caps_toggle,lv3:ralt,compose:menu
+feh -z --bg-scale "${HOME}/.wlp/"
+pidof sxhkd > /dev/null || sxhkd &
+pidof picom > /dev/null || picom -CGFfb
+pidof dunst > /dev/null || dunst &
+pidof xautolock > /dev/null || xautolock &
+
+bspc config border_width         2
+bspc config window_gap          12
+bspc config bottom_padding       0
+
+bspc config split_ratio             0.52
+bspc config borderless_monocle      true
+bspc config gapless_monocle         true
+bspc config pointer_follows_monitor true
+bspc config click_to_focus          true
+bspc config honor_size_hints        true
+
+bspc rule -a mpv state=floating
+bspc rule -a QjackCtl state=floating
+bspc rule -a Ardour state=floating
+bspc rule -a Dia state=floating
+bspc rule -a net-ftb-main-Main state=floating
+bspc rule -a processing-app-Base state=floating
+bspc rule -a pinentry state=floating
+bspc rule -a 'jetbrains-idea-ce:*:win0' state=floating
+bspc rule -a 'xrengine.exe' state=floating
+bspc rule -a 'explorer.exe' state=floating
+bspc rule -a 'URxvt:nvim-unity' state=floating
+bspc rule -a 'Unity' state=floating
+bspc rule -a 'lv.euso.signanywhere.SignAnywhere' state=floating

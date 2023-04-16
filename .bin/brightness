@@ -1,0 +1,28 @@
+#!/bin/bash
+
+step=5
+current=$(xrandr --verbose | grep eDP -A 5 | awk -F':' '/Brightness/ {gsub(/ /,""); gsub(/0./,""); print $2}')
+brightness=${current}
+
+case "$1" in
+	up)
+		if [[ "${current}" == "1.0" ]]; then
+			exit
+		fi
+		brightness=$((current + step))
+		;;
+	down)
+		if [[ "${current}" == "1.0" ]]; then
+			current=100
+		fi
+		brightness=$((current - step))
+		;;
+esac
+
+if [[ ${brightness} -eq 100 ]]; then
+	brightness="1.0"
+else
+	brightness="0.${brightness}"
+fi
+
+xrandr --output eDP --brightness ${brightness}

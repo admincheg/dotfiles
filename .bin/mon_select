@@ -1,0 +1,26 @@
+#!/bin/bash
+
+move=$1; shift
+mon_pos=$1; shift
+desktop_num=$1; shift
+
+declare -a monitors
+
+while read x y mon; do
+	num="$((x/1920 + 1))"
+	monitors[${num}]="${mon}"
+done < <(xrandr --listactivemonitors | awk -F'+' '/^[^M]/ {print $3,$4}')
+
+mon="${monitors[$mon_pos]}"
+
+if [[ -n ${mon} ]]; then
+	if [[ ${move} -eq 1 ]]; then
+		bspc node -d "${mon}:^${desktop_num}"
+		#echo bspc node -d "${mon}:^${desktop_num}" >> /tmp/event
+	else
+		bspc desktop -f "${mon}:^${desktop_num}"
+		#echo bspc desktop -f "${mon}:^${desktop_num}" >> /tmp/event
+	fi
+fi
+
+unset monitors

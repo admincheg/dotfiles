@@ -1,0 +1,7 @@
+/tags
+/tags.lock
+/tags.temp
+.terraform
+.terraform.lock.hcl
+config/database.yml
+public/

@@ -1,0 +1,10 @@
+#!/bin/bash
+
+args=()
+dst="${HOME}/.scrs/$(date +%s).png"
+
+if [[ `basename "$0"` == "scw" ]]; then
+  args=( -s )
+fi
+
+maim "${args[@]}" "${dst}"
