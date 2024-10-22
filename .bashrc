@@ -1,10 +1,11 @@
 # {{{ Exports
+export BASE_COLOR="91"
 export PATH="${HOME}/.bin:${HOME}/.local/bin:${PATH}"
 export HISTIGNORE="&:bg:fg:ll:h"
 export HISTCONTROL=ignoreboth:erasedups
 export LC_ALL="en_US.UTF-8"
 export GPG_TTY=$(tty)
-export PS1="\[\033[32m\]\u@\h\[\033[0m\]:\[\033[1;32m\]\W \[\033[0;32m\]>\[\033[0m\] "
+export PS1="\[\033[${BASE_COLOR}m\]\u@\h\[\033[0m\]:\[\033[1;${BASE_COLOR}m\]\W \[\033[0;${BASE_COLOR}m\]>\[\033[0m\] "
 export NPM_PACKAGES="${HOME}/.npm/packages"
 export OWLLIB_COLOR=1
 export EDITOR="nvim"
@@ -49,61 +50,105 @@ if [[ -d "${_sensitive_path}" ]]; then
   for f in ${_sensitive_path}/*; do
     source "${f}"
   done
-fi
-# }}}
-
-# {{{ Completion
-if [[ -f /etc/bash_completion ]]; then
-    . /etc/bash_copmletion
+else
+  echo "${_sensitive_path} is not found"
 fi
 # }}}
 
 # {{{ Functions
-ssh() {
+_is_tmux() {
   if [[ -n "${TMUX}" ]]; then
-    # Note: Options without parameter were hardcoded,
-    # in order to distinguish an option's parameter from the destination.
-    #
-    #                   s/[[:space:]]*\(\( | spaces before options
-    #     \(-[46AaCfGgKkMNnqsTtVvXxYy]\)\| | option without parameter
-    #                     \(-[^[:space:]]* | option
-    # \([[:space:]]\+[^[:space:]]*\)\?\)\) | parameter
-    #                      [[:space:]]*\)* | spaces between options
-    #                        [[:space:]]\+ | spaces before destination
-    #                \([^-][^[:space:]]*\) | destination
-    #                                   .* | command
-    #                                 /\6/ | replace with destination
-    tmux rename-window "$(echo "$@" \
-      | sed 's/[[:space:]]*\(\(\(-[46AaCfGgKkMNnqsTtVvXxYy]\)\|\(-[^[:space:]]*\([[:space:]]\+[^[:space:]]*\)\?\)\)[[:space:]]*\)*[[:space:]]*\(\([0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+\)\|\([-a-z0-9_]\+\.[-a-z0-9_]\+\)\).*/\6/')"
-    command ssh "$@"
-    tmux set-window-option automatic-rename "on" 1> /dev/null
-  else
-    command ssh "$@"
+    return 0
+  fi
+
+  return 1
+}
+
+_tmux_get_session() {
+  declare _session=""
+  if _is_tmux; then
+    _session=$(tmux list-sessions | sed -n '/(attached)/s/:.*//p')
+  fi
+
+  if [[ -n "${_session}" ]]; then
+    echo "${_session}"
+    return 0
+  fi
+
+  return 1
+}
+
+_ssh_config() {
+  declare _session=""
+  declare _config=
+
+  _session=$(_tmux_get_session)
+  if [[ $? -eq 0 ]]; then
+    _config="${HOME}/.ssh/${_session}/config"
+
+    if [[ -f "${_config}" ]]; then
+      echo -n "-F ${_config}"
+    fi
   fi
 }
-#ssh() {
-#    local hostname=""
-#
-#    while read key value; do
-#        case "$key" in
-#            hostname)
-#                if [[ "${value}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-#                    hostname=${value}
-#                else
-#                    hostname=${value//.*}
-#                fi
-#                ;;
-#        esac
-#    done < <(/usr/bin/ssh -G "$@")
-#
-#    if [[ -n "$hostname" ]] && [[ -n "$TMUX" ]]; then
-#        tmux rename-window "$hostname"
-#        /usr/bin/ssh "$@"
-#        tmux rename-window "bash"
-#    else
-#        /usr/bin/ssh "$@"
-#    fi
-#}
+
+ssh() {
+  declare _hostname=""
+
+  while read key value; do
+    case "$key" in
+      host)
+        if [[ "${value}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          _hostname=${value}
+        else
+          _hostname=$(echo "${value}" | sed 's/^\([^\.]\+\)\(\.[^\.]\+\).*/\1\2/')
+        fi
+        ;;
+    esac
+  done < <(command ssh -G "$@" 2>/dev/null)
+
+  if [[ -n "${_hostname}" ]] && _is_tmux; then
+    tmux rename-window "${_hostname}"
+  fi
+
+  TERM="xterm-256color" command ssh "$@"
+
+  if _is_tmux; then
+    tmux set-window-option automatic-rename "on" 1>/dev/null
+  fi
+}
+
+ssh-pub() {
+  declare _name="$1"; shift
+  declare _session=""
+  declare _key=""
+
+  _session=$(_tmux_get_session)
+
+  if [[ $? -eq 0 ]]; then
+    _key="${HOME}/.ssh/${_session}/${_name}"
+    if [[ -f "${_key}" ]]; then
+      ssh-keygen -y -f "${_key}"
+      return 0
+    fi
+  fi
+
+  _key="${HOME}/.ssh/${_name}"
+  if [[ -f "${_key}" ]]; then
+    ssh-keygen -y -f "${_key}"
+    return 0
+  fi
+
+  return 1
+}
+
+git() {
+  if _is_tmux; then
+    export GIT_SSH_COMMAND="ssh $(_ssh_config)"
+  fi
+
+  command git "$@"
+}
 
 enable_gpg_with_ssh() {
 	if ! pgrep -x -u "${USER}" gpg-agent &> /dev/null; then
@@ -126,16 +171,26 @@ prompt_callback() {
 }
 
 set_prompt() {
-	export PS1="$(prompt_callback)\[\033[32m\]\u@\h\[\033[0m\]:\[\033[1;32m\]\W \[\033[0;32m\]>\[\033[0m\] "
+	export PS1="$(prompt_callback)${PS1}"
 }
 
 enable_git_helper() {
 	export GIT_PROMPT_ONLY_IN_REPO=1
 	export GIT_PROMPT_LEADING_SPACE=0
-	export GIT_PROMPT_START="[\[\e[32m\]\$(date +%H:%M)\[\e[0m\]] "
-    export GIT_PROMPT_END="\n\[\e[32m\]\u@\h\[\e[0m\]:\[\e[1;32m\]\W \[\e[0;32m\]>\[\e[0m\] "
+	export GIT_PROMPT_START="[\[\e[${BASE_COLOR}m\]\$(date +%H:%M)\[\e[0m\]] "
+    export GIT_PROMPT_END="\n\[\e[${BASE_COLOR}m\]\u@\h\[\e[0m\]:\[\e[1;${BASE_COLOR}m\]\W \[\e[0;${BASE_COLOR}m\]>\[\e[0m\] "
 	source ~/.bash-git-prompt/gitprompt.sh
 }
+# }}}
+
+# {{{ Completion
+if [[ -f "/etc/bash/bashrc.d/bash_completion.sh" ]]; then
+    . /etc/bash/bashrc.d/bash_completion.sh
+fi
+
+if [[ -f "${HOME}/.local/share/complete_alias" ]]; then
+  . ${HOME}/.local/share/complete_alias
+fi
 # }}}
 
 # {{{ Try to add work env
@@ -152,6 +207,10 @@ alias _gpu="git push"
 alias _gp="git pull"
 alias _gr="git rebase"
 
+alias ssh="ssh $(_ssh_config)"
+alias scp="scp $(_ssh_config)"
+complete -F _complete_alias ssh scp
+
 type nvim >/dev/null 2>&1 && alias vim="nvim"
 type nvim >/dev/null 2>&1 && alias rvim="nvim -u ~/.config/nvim-rails/init.vim"
 # }}}
@@ -167,7 +226,3 @@ export LUA_LIBDIR="${HOME}/.luarocks/share/lua/5.1"
 export LUA_CPATH="./?.so;/usr/lib64/lua/5.1/?.so;/usr/lib64/lua/5.1/loadall.so;${HOME}/.luarocks/lib/lua/5.1/?.so;/usr/share/lua/5.1/lib/lua/5.1/?.so"
 export PATH="${HOME}/.luarocks/bin:/usr/share/lua/5.1/bin:${PATH}"
 # }}}
-
-[[ -s "$HOME/.rvm/scripts/rvm" ]] && source "$HOME/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
-# Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
-export PATH="$PATH:$HOME/.rvm/bin"
