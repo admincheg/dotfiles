@@ -3,6 +3,134 @@ local lazy = require('lazy-wrapper')
 -- }}}
 
 --  {{{ TODO: Functions (move to separated file)
+local state = {
+  terminal_buf = nil,
+  terminal_job = nil,
+}
+
+local function is_valid_buf(buf)
+  return buf and vim.api.nvim_buf_is_valid(buf)
+end
+
+local function remember_terminal(buf)
+  if not is_valid_buf(buf) or vim.bo[buf].buftype ~= 'terminal' then
+    return
+  end
+
+  local job_id = vim.b[buf].terminal_job_id
+  if job_id then
+    state.terminal_buf = buf
+    state.terminal_job = job_id
+  end
+end
+
+local function find_terminal_job()
+  -- Prefer remembered/last active terminal.
+  if is_valid_buf(state.terminal_buf) and state.terminal_job then
+    return state.terminal_job, state.terminal_buf
+  end
+
+  -- Then prefer visible terminal windows.
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.bo[buf].buftype == 'terminal' and vim.b[buf].terminal_job_id then
+      remember_terminal(buf)
+      return state.terminal_job, state.terminal_buf
+    end
+  end
+
+  -- Fallback: any terminal buffer.
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.bo[buf].buftype == 'terminal' and vim.b[buf].terminal_job_id then
+      remember_terminal(buf)
+      return state.terminal_job, state.terminal_buf
+    end
+  end
+
+  return nil, nil
+end
+
+local function ensure_terminal()
+  local job_id, buf = find_terminal_job()
+  if job_id then
+    return job_id, buf
+  end
+
+  vim.cmd('belowright 10split')
+  vim.cmd('terminal')
+  buf = vim.api.nvim_get_current_buf()
+  remember_terminal(buf)
+  vim.cmd('wincmd p')
+
+  return state.terminal_job, state.terminal_buf
+end
+
+local function send_to_terminal(text)
+  local job_id = ensure_terminal()
+  if not job_id then
+    vim.notify('No terminal job found', vim.log.levels.ERROR)
+    return
+  end
+
+  vim.fn.chansend(job_id, text .. '\n')
+end
+
+local function run_current_line()
+  send_to_terminal(vim.api.nvim_get_current_line())
+end
+
+local function run_visual_selection()
+  local mode = vim.fn.visualmode()
+  local start_pos = vim.fn.getpos("'<")
+  local end_pos = vim.fn.getpos("'>")
+  local srow, scol = start_pos[2], start_pos[3]
+  local erow, ecol = end_pos[2], end_pos[3]
+
+  if srow > erow or (srow == erow and scol > ecol) then
+    srow, erow = erow, srow
+    scol, ecol = ecol, scol
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(0, srow - 1, erow, false)
+  if #lines == 0 then
+    return
+  end
+
+  if mode == 'v' then
+    lines[#lines] = string.sub(lines[#lines], 1, ecol)
+    lines[1] = string.sub(lines[1], scol)
+  end
+
+  send_to_terminal(table.concat(lines, '\n'))
+end
+
+local function kubectl_apply_current_file()
+  vim.cmd('write')
+  local file = vim.fn.shellescape(vim.fn.expand('%:p'))
+  send_to_terminal('kubectl apply -f ' .. file)
+end
+
+local function smart_delete_buffer(force)
+  local buf = vim.api.nvim_get_current_buf()
+  local wins = vim.fn.win_findbuf(buf)
+
+  -- Terminal buffers often look alive even after the shell is done. Delete them explicitly.
+  if vim.bo[buf].buftype == 'terminal' then
+    vim.cmd((force and 'bdelete! ' or 'bdelete ') .. buf)
+    return
+  end
+
+  if vim.bo[buf].modified and not force then
+    vim.notify('Buffer has unsaved changes: use <leader>bD to force close', vim.log.levels.WARN)
+    return
+  end
+
+  if #wins > 1 then
+    vim.cmd('close')
+  else
+    vim.cmd((force and 'bdelete! ' or 'bdelete ') .. buf)
+  end
+end
 --  }}}
 
 -- {{{ Configuration
@@ -245,17 +373,35 @@ vim.keymap.set('n', '<leader>dd', tb.diagnostics)
 
 vim.keymap.set({'n'}, '<C-p>', ':CtrlPBuffer<cr>')
 vim.keymap.set({'n'}, '<F1>', ':NvimTreeToggle<cr>')
-vim.keymap.set({'n'}, '<F2>', ':below term<cr>10<C-W>_')
+vim.keymap.set({'n'}, '<F2>', function()
+  vim.cmd('belowright 10split')
+  vim.cmd('terminal')
+  remember_terminal(vim.api.nvim_get_current_buf())
+end, { desc = 'Open terminal split' })
 vim.keymap.set({'n'}, '<F3>', ':DBUIToggle<cr>')
 vim.keymap.set({'n'}, '<Tab>', '<C-W><C-W>')
 vim.keymap.set({'n'}, '<Leader>g', ':G<cr>')
 vim.keymap.set({'n'}, '<Leader>p', ':set paste!<cr>')
 vim.keymap.set({'n'}, '<Leader>e', vim.diagnostic.open_float)
+vim.keymap.set({'n'}, '<leader>rt', run_current_line, { desc = 'Run current line in terminal' })
+vim.keymap.set({'n'}, '<leader>bd', function() smart_delete_buffer(false) end, { desc = 'Delete buffer' })
+vim.keymap.set({'n'}, '<leader>bD', function() smart_delete_buffer(true) end, { desc = 'Force delete buffer' })
 vim.keymap.set({'i'}, '<Leader>p', '<C-O>:set paste!<cr>')
 vim.keymap.set({'t'}, '<C-Space>', '<C-\\><C-N>')
+vim.keymap.set({'n'}, '<Leader>nt', ':tabnew<cr>:term<cr>')
+vim.keymap.set({'n'}, '<Leader>nd', ':tabnew<cr>:DBUIToggle<cr>')
+vim.keymap.set({'n'}, '<leader>ka', kubectl_apply_current_file, { desc = 'kubectl apply current file' })
+
+vim.keymap.set({'v'}, '<leader>rt', run_visual_selection, { desc = 'Run selection in terminal' })
 -- }}}
 
 -- {{{ Autocmd
+vim.api.nvim_create_autocmd({ 'TermOpen', 'BufEnter', 'WinEnter' }, {
+  callback = function(args)
+    remember_terminal(args.buf)
+  end,
+})
+
 -- {{{ Cleanup trailing spaces
 vim.api.nvim_create_autocmd(
 	{ 'BufWritePre' },
