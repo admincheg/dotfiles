@@ -2,9 +2,17 @@
 
 args=()
 dst="${HOME}/.scrs/$(date +%s).png"
+upload=0
 
 if [[ `basename "$0"` == "scw" ]]; then
   args=( -s )
+elif [[ `basename "$0"` == "scu" ]]; then
+  args=( -s )
+  upload=1
 fi
 
 maim "${args[@]}" "${dst}"
+echo -n "${dst}" | xclip -sel clipboard
+#if [[ ${upload} ]]; then
+#	8fw_upload "${dst}"
+#fi

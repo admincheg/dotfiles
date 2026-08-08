@@ -1,3 +1,6 @@
 #!/bin/bash
 
+panel stop
+jack_control exit
+pulseaudio -k
 bspc quit

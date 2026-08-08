@@ -41,8 +41,9 @@ URxvt*scrollTtyOutput: false
 URxvt*scrollWithBuffer: true
 URxvt*scrollTtyKeypress: true
 
-URxvt*font: xft:Go Mono:size=10,xft:TerminessTTF Nerd Font Mono:size=12
-URxvtS*font: xft:Go Mono:size=14,xft:TerminessTTF Nerd Font Mono:size=16
+URxvt*font: xft:Go Mono:size=10,xft:Terminess Nerd Font:size=12,xft:Noto Sans Mono:size=12
+URxvtS*font: xft:Go Mono:size=14,xft:Terminess Nerd Font:size=16
+URxvtF*font: xft:Go Mono:size=36,xft:Terminess Nerd Font:size=38
 URxvt*savelines: 65535
 URxvt*loginshell: false
 URxvt*scrollBar: false

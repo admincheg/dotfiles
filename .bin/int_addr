@@ -1,0 +1,19 @@
+#!/bin/bash
+
+_interface="$1"; shift
+
+if [[ -z "${_interface}" ]]; then
+	_interface=$(ip r show default | head -1 | sed 's/.*dev \([^ ]\+\).*/\1/')
+	if [[ -z "${_interface}" ]]; then
+		echo "Interface is not specified"
+		exit 1
+	fi
+fi
+
+_addr=$(ip -br a show | awk "/^${_interface}/ {print \$3}")
+if [[ -z "${_addr}" ]]; then
+	echo "Failed to fetch addr for interface ${_interface}"
+	exit 1
+fi
+
+echo -n "${_addr}"

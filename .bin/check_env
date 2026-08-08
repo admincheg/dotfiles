@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+set -u
+
+_missing_required=0
+_missing_optional=0
+
+_heading() {
+    printf '\n%s\n' "$1"
+}
+
+_check_command() {
+    local level="$1"
+    local command="$2"
+    local purpose="$3"
+
+    if command -v "${command}" >/dev/null 2>&1; then
+        printf '  OK       %-28s %s\n' "${command}" "${purpose}"
+        return
+    fi
+
+    if [[ "${level}" == required ]]; then
+        printf '  MISSING  %-28s %s\n' "${command}" "${purpose}"
+        _missing_required=$((_missing_required + 1))
+    else
+        printf '  optional %-28s %s\n' "${command}" "${purpose}"
+        _missing_optional=$((_missing_optional + 1))
+    fi
+}
+
+_check_path() {
+    local path="$1"
+    local purpose="$2"
+
+    if [[ -e "${path}" ]]; then
+        printf '  OK       %-28s %s\n' "${path/#"${HOME}"/\~}" "${purpose}"
+    else
+        printf '  optional %-28s %s\n' "${path/#"${HOME}"/\~}" "${purpose}"
+        _missing_optional=$((_missing_optional + 1))
+    fi
+}
+
+printf 'Dotfiles environment check for %s\n' "${HOME}"
+
+_heading 'Core'
+_check_command required bash 'shell and scripts'
+_check_command required git 'submodules and Git prompt'
+_check_command required rsync 'collect/deploy synchronizer'
+_check_command required tmux 'terminal workspace manager'
+_check_command required nvim 'editor'
+
+_heading 'Hyprland / Wayland'
+_check_command required hyprland 'compositor'
+_check_command required hyprctl 'Hyprland control and wallpaper helper'
+_check_command required hyprpaper 'wallpaper service'
+_check_command required hypridle 'idle/lock policy'
+_check_command required hyprlock 'screen lock'
+_check_command required kitty 'terminal'
+_check_command required tofi-run 'application launcher'
+_check_command required wpctl 'audio key bindings'
+_check_command required brightnessctl 'brightness key bindings'
+_check_command required dbus-update-activation-environment 'session environment'
+_check_command required dbus-send 'media controls'
+_check_command required gsettings 'cursor integration'
+_check_command required loginctl 'lock/sleep integration'
+_check_command required notify-send 'desktop notifications'
+
+_heading 'Shell helpers'
+_check_command required curl 'external address and API requests'
+_check_command required jq 'environment-manager JSON parsing'
+_check_command required gpg 'GPG agent integration'
+_check_command required gpgconf 'GPG SSH socket discovery'
+_check_command required pass 'password picker'
+_check_command required wl-copy 'Wayland password typing'
+_check_command required fzf 'tmux project picker'
+_check_command required find 'project/wallpaper discovery'
+_check_command required shuf 'random wallpaper selection'
+
+_heading 'Optional integrations'
+_check_command optional dunst 'notification daemon (also provided as a user service)'
+_check_command optional hyprshot 'screenshot binding'
+_check_command optional hyprpm 'Hyprland plugin reload'
+_check_command optional playerctl 'generic media-control alternative'
+_check_command optional aws 'AWS profiles in e'
+_check_command optional vault 'Vault profiles in e'
+_check_command optional nomad 'Nomad profiles in e'
+_check_command optional bw 'Bitwarden profile in e'
+_check_command optional openssl 'DNS Made Easy profile in e'
+_check_command optional xxd 'DNS Made Easy profile in e'
+
+_heading 'Managed local state'
+_check_path "${HOME}/.config/hypr/hyprland.lua" 'active Hyprland config'
+_check_path "${HOME}/.config/systemd/user" 'user service definitions'
+_check_path "${HOME}/.local/share/bash-git-prompt/gitprompt.sh" 'Git prompt submodule content'
+_check_path "${HOME}/.wlp" 'wallpaper directory'
+
+printf '\nResult: %d required missing, %d optional missing.\n' \
+    "${_missing_required}" "${_missing_optional}"
+
+if [[ ${_missing_required} -gt 0 ]]; then
+    exit 1
+fi

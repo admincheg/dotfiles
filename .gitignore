@@ -1,0 +1,11 @@
+.env
+.env.*
+.config/env/
+.config/env.sensitive/
+.nvimlog
+*.pem
+*.p12
+*.pfx
+*.key
+id_rsa
+id_ed25519

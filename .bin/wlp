@@ -1,0 +1,10 @@
+#!/bin/bash
+
+for i in $(hyprctl monitors | awk '/Monitor/ {print $2}'); do
+    declare _WLP
+    _WLP=$(find "${HOME}/.wlp" -type f 2>/dev/null | shuf -n 1)
+
+    [[ -n "${_WLP}" ]] || continue
+
+    hyprctl -i 0 hyprpaper wallpaper "${i},${_WLP}"
+done

@@ -17,11 +17,15 @@
 	d = difftool
 [core]
 	excludesfile = /home/owlbook/.gitignore_global
-[url "ssh://git@gitlab.exan.tech"]
-	insteadOf = https://gitlab.exan.tech
-[url "ssh://gitlab.croff.dev/"]
-	insteadOf = https://gitlab.croff.dev/
 [gpg]
 	program = gpg
 [init]
 	defaultBranch = master
+[includeIf "gitdir:~/git/owlhost/"]
+    path = ~/.gitconfig.owlhost
+[includeIf "gitdir:~/git/humans/"]
+	path = ~/.gitconfig.humans
+[includeIf "gitdir:~/git/narayana/"]
+	path = ~/.gitconfig.narayana
+[includeIf "gitdir:~/git/exante/"]
+	path = ~/.gitconfig.exante

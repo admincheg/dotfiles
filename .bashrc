@@ -1,5 +1,11 @@
+if [[ -f "${HOME}/.config/bash/init.sh" ]]; then
+    source "${HOME}/.config/bash/init.sh"
+    return
+fi
+
+
 # {{{ Exports
-export BASE_COLOR="91"
+export BASE_COLOR="32"
 export PATH="${HOME}/.bin:${HOME}/.local/bin:${PATH}"
 export HISTIGNORE="&:bg:fg:ll:h"
 export HISTCONTROL=ignoreboth:erasedups
@@ -50,8 +56,16 @@ if [[ -d "${_sensitive_path}" ]]; then
   for f in ${_sensitive_path}/*; do
     source "${f}"
   done
-else
-  echo "${_sensitive_path} is not found"
+fi
+# }}}
+
+# {{{ Completion
+if [[ -f "/etc/bash/bashrc.d/bash_completion.sh" ]]; then
+    . /etc/bash/bashrc.d/bash_completion.sh
+fi
+
+if [[ -f "${HOME}/.complete_alias" ]]; then
+  . ~/.complete_alias
 fi
 # }}}
 
@@ -92,6 +106,11 @@ _ssh_config() {
   fi
 }
 
+_check=$(type -t ssh)
+if [[ "${_check}" == 'alias' ]]; then
+    unalias ssh
+fi
+
 ssh() {
   declare _hostname=""
 
@@ -111,10 +130,18 @@ ssh() {
     tmux rename-window "${_hostname}"
   fi
 
+  if [[ -n "${STY}" ]]; then
+    echo -ne "\033k${_hostname}\033\\"
+  fi
+
   TERM="xterm-256color" command ssh "$@"
 
   if _is_tmux; then
     tmux set-window-option automatic-rename "on" 1>/dev/null
+  fi
+
+  if [[ -n "${STY}" ]]; then
+    echo -ne "\033kbash\033\\"
   fi
 }
 
@@ -150,6 +177,22 @@ git() {
   command git "$@"
 }
 
+_cd() {
+    builtin cd "$@"
+
+    if [[ -z "${VIRTUAL_ENV}" ]]; then
+        if [[ -f ".venv/bin/activate" ]]; then
+            source ".venv/bin/activate"
+        fi
+    else
+        proj_root="$(dirname ${VIRTUAL_ENV})"
+        if [[ "${PWD}" != "${proj_root}" ]]; then
+            echo "DEACTIVATE"
+            deactivate
+        fi
+    fi
+}
+
 enable_gpg_with_ssh() {
 	if ! pgrep -x -u "${USER}" gpg-agent &> /dev/null; then
 	     gpg-connect-agent /bye &> /dev/null
@@ -183,18 +226,13 @@ enable_git_helper() {
 }
 # }}}
 
-# {{{ Completion
-if [[ -f "/etc/bash/bashrc.d/bash_completion.sh" ]]; then
-    . /etc/bash/bashrc.d/bash_completion.sh
-fi
-
-if [[ -f "${HOME}/.local/share/complete_alias" ]]; then
-  . ${HOME}/.local/share/complete_alias
-fi
-# }}}
-
 # {{{ Try to add work env
 PROMPT_COMMAND="set_prompt"
+# }}}
+
+# {{{ Initialize
+enable_gpg_with_ssh
+enable_git_helper
 # }}}
 
 # {{{ Alias
@@ -207,6 +245,8 @@ alias _gpu="git push"
 alias _gp="git pull"
 alias _gr="git rebase"
 
+alias cd="_cd"
+
 alias ssh="ssh $(_ssh_config)"
 alias scp="scp $(_ssh_config)"
 complete -F _complete_alias ssh scp
@@ -215,14 +255,17 @@ type nvim >/dev/null 2>&1 && alias vim="nvim"
 type nvim >/dev/null 2>&1 && alias rvim="nvim -u ~/.config/nvim-rails/init.vim"
 # }}}
 
-# {{{ Initialize
-enable_gpg_with_ssh
-enable_git_helper
-# }}}
-
 # {{{ Configure LUA
 export LUA_PATH="/usr/share/lua/5.1/?.lua;./?.lua;/usr/share/lua/5.1/?/init.lua;/usr/lib64/lua/5.1/?.lua;/usr/lib64/lua/5.1/?/init.lua;${HOME}/.luarocks/share/lua/5.1/?.lua;${HOME}/.luarocks/share/lua/5.1/?/init.lua;/usr/share/lua/5.1/share/lua/5.1/?.lua;/usr/share/lua/5.1/share/lua/5.1/?/init.lua"
 export LUA_LIBDIR="${HOME}/.luarocks/share/lua/5.1"
 export LUA_CPATH="./?.so;/usr/lib64/lua/5.1/?.so;/usr/lib64/lua/5.1/loadall.so;${HOME}/.luarocks/lib/lua/5.1/?.so;/usr/share/lua/5.1/lib/lua/5.1/?.so"
 export PATH="${HOME}/.luarocks/bin:/usr/share/lua/5.1/bin:${PATH}"
 # }}}
+
+PATH="/home/owlbook/perl5/bin${PATH:+:${PATH}}"; export PATH;
+
+PERL5LIB="/home/owlbook/perl5/lib/perl5${PERL5LIB:+:${PERL5LIB}}"; export PERL5LIB;
+PERL_LOCAL_LIB_ROOT="/home/owlbook/perl5${PERL_LOCAL_LIB_ROOT:+:${PERL_LOCAL_LIB_ROOT}}"; export PERL_LOCAL_LIB_ROOT;
+PERL_MB_OPT="--install_base \"/home/owlbook/perl5\""; export PERL_MB_OPT;
+PERL_MM_OPT="INSTALL_BASE=/home/owlbook/perl5"; export PERL_MM_OPT;
+

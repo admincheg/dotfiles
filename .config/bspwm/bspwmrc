@@ -7,7 +7,7 @@ if [[ -f "${HOME}/.config/bspwm/monitors.sh" ]]; then
 fi
 
 #setxkbmap -layout lv,ru -variant ,winkeys -option grp:caps_toggle,lv3:ralt,compose:menu
-feh -z --bg-scale "${HOME}/.wlp/"
+feh -z --bg-scale /home/owlbook/.wlp/
 pidof sxhkd > /dev/null || sxhkd &
 pidof picom > /dev/null || picom -CGFfb
 pidof dunst > /dev/null || dunst &

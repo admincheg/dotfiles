@@ -1,0 +1,12 @@
+[Unit]
+Description=Set wallpaper
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+#ExecStart=/usr/bin/feh -z --bg-scale /home/owlbook/.wlp/
+ExecStart=/home/owlbook/.bin/wlp
+Slice=session.slice
+
+[Install]
+WantedBy=default.target

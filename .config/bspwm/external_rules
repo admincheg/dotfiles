@@ -1,0 +1,8 @@
+#! /bin/sh
+
+wid=$1
+class=$2
+instance=$3
+consequences=$4
+
+echo -e "$wid\n$class\n$instance\n$consequences" >> /tmp/bspwm

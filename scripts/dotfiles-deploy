@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+manifest="${repo_root}/.dotfiles-paths"
+apply=0
+rsync_options=(-ai --exclude=.git)
+
+if [[ "${1:-}" == "--apply" ]]; then
+    apply=1
+elif [[ $# -gt 0 ]]; then
+    echo "Usage: $(basename "$0") [--apply]" >&2
+    exit 2
+fi
+
+if [[ ${apply} -eq 0 ]]; then
+    rsync_options+=(-n)
+fi
+
+while IFS= read -r path || [[ -n "${path}" ]]; do
+    [[ -z "${path}" || "${path}" == \#* ]] && continue
+    source_path="${repo_root}/${path}"
+    target_path="${HOME}/${path}"
+
+    if [[ ! -e "${source_path}" ]]; then
+        printf 'skip (not in checkout): %s\n' "${path}"
+        continue
+    fi
+
+    if [[ -d "${source_path}" ]]; then
+        if [[ ${apply} -eq 1 ]]; then
+            mkdir -p "${target_path}"
+        elif [[ ! -d "${target_path}" ]]; then
+            printf 'would create directory: %s\n' "${target_path}"
+            continue
+        fi
+        rsync "${rsync_options[@]}" "${source_path}/" "${target_path}/"
+    else
+        target_parent="$(dirname -- "${target_path}")"
+        if [[ ${apply} -eq 1 ]]; then
+            mkdir -p "${target_parent}"
+        elif [[ ! -d "${target_parent}" ]]; then
+            printf 'would create directory: %s\n' "${target_parent}"
+            continue
+        fi
+        rsync "${rsync_options[@]}" "${source_path}" "${target_path}"
+    fi
+done < "${manifest}"
+
+if [[ ${apply} -eq 0 ]]; then
+    echo 'Preview only. Re-run with --apply to deploy this checkout into HOME.'
+fi

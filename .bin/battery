@@ -1,0 +1,33 @@
+#!/bin/bash
+
+s_low=""
+s_charge=""
+s_full=""
+s_discharge=""
+s_unknown=""
+_battery="/sys/class/power_supply/BAT0"
+
+_status=$(<"${_battery}/status")
+_capacity=$(<"${_battery}/capacity")
+
+_ret=""
+case "$_status" in
+	"Full")
+		_ret="$s_full"
+		;;
+	"Charging")
+		_ret="$s_charge"
+		;;
+	"Discharging")
+		if [[ $_capacity -lt 20 ]]; then
+			_ret="$s_low"
+		else
+			_ret="$s_discharge"
+		fi
+		;;
+	*)
+		_ret="$s_unknown"
+		;;
+esac
+
+echo -n "${_ret} ${_capacity}%"

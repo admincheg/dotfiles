@@ -1,0 +1,13 @@
+[Unit]
+Description=LMBar daemon
+After=xorg.target
+
+[Service]
+Type=simple
+ExecStart=/home/owlbook/.bin/lmbar run
+TimeoutStartSec=1
+Environment=DISPLAY=:0
+Slice=session.slice
+
+[Install]
+WantedBy=mystuff.target

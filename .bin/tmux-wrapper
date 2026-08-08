@@ -1,0 +1,377 @@
+#!/bin/bash
+
+_owllib="${HOME}/.local/share/owllib/helpers.sh"
+_project_root="${TMUX_PROJECT_ROOT:-${HOME}/git}"
+_socket_dir="/tmp/tmux-${UID}"
+_socket="${_socket_dir}/socket"
+
+_name="tmux"
+_company=""
+_project_arg=""
+_project_dir=""
+_project_rel=""
+_session=""
+
+if [[ -f "${_owllib}" ]]; then
+    # shellcheck source=/dev/null
+    . "${_owllib}"
+else
+    echo "OwlLib is not found, we can't work without it, sorry" >&2
+    exit 1
+fi
+
+_has_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+_require_cmd() {
+    local cmd="$1"
+    local why="${2:-required}"
+
+    if ! _has_cmd "${cmd}"; then
+        _error "Required application '${cmd}' is not found (${why})"
+    fi
+}
+
+_check_dependencies() {
+    local cmd
+    local missing_core=0
+
+    printf '%-16s %-10s %s\n' "application" "status" "used for"
+    printf '%-16s %-10s %s\n' "-----------" "------" "--------"
+
+    for cmd in tmux; do
+        if _has_cmd "${cmd}"; then
+            printf '%-16s %-10s %s\n' "${cmd}" "OK" "core"
+        else
+            printf '%-16s %-10s %s\n' "${cmd}" "MISSING" "core"
+            missing_core=1
+        fi
+    done
+
+    for cmd in fzf find sort; do
+        if _has_cmd "${cmd}"; then
+            printf '%-16s %-10s %s\n' "${cmd}" "OK" "interactive project picker"
+        else
+            printf '%-16s %-10s %s\n' "${cmd}" "MISSING" "interactive project picker"
+        fi
+    done
+
+    for cmd in lazygit htop; do
+        if _has_cmd "${cmd}"; then
+            printf '%-16s %-10s %s\n' "${cmd}" "OK" "optional tmux popup"
+        else
+            printf '%-16s %-10s %s\n' "${cmd}" "optional" "optional tmux popup"
+        fi
+    done
+
+    for cmd in ext_addr int_addr battery; do
+        if _has_cmd "${cmd}"; then
+            printf '%-16s %-10s %s\n' "${cmd}" "OK" "optional tmux status bar"
+        else
+            printf '%-16s %-10s %s\n' "${cmd}" "optional" "optional tmux status bar"
+        fi
+    done
+
+    return "${missing_core}"
+}
+
+_require_cmd tmux "tmux wrapper core"
+
+if [[ -n "${TMUX:-}" ]]; then
+    _debug "We're running in tmux, use its socket"
+    _socket="${TMUX%%,*}"
+else
+    if [[ ! -d "${_socket_dir}" ]]; then
+        _debug "Tmux socket directory is not found, create it"
+        mkdir -p -m 700 "${_socket_dir}" || \
+            _error "Failed to create socket directory ${_socket_dir}"
+    fi
+fi
+
+_tmux() {
+    command tmux -S "${_socket}" "$@"
+}
+
+_usage() {
+    cat <<EOF
+Usage:
+  tmux-wrapper [options] <company> [project] [command [args...]]
+
+Options:
+  -n NAME        name for a newly created command window
+  -c, --check   check core/picker/optional dependencies
+  -h, --help    show this help
+
+Project root:
+  ${_project_root}
+
+Semantics:
+  The first positional argument is always the company namespace.
+
+Examples:
+  tmux-wrapper narayana
+  tmux-wrapper narayana billing
+  tmux-wrapper narayana telecom/billing
+  tmux-wrapper -n logs narayana billing journalctl -f
+
+Typical aliases:
+  alias _tn='tmux-wrapper narayana'
+  alias _to='tmux-wrapper other-company'
+
+Project discovery is recursive below:
+  ${_project_root}/<company>
+
+So all of these are valid:
+  git/narayana/project
+  git/narayana/subfolder/project
+  git/narayana/subfolder/project/subproject
+
+With only <company>, fzf shows active sessions for that company and all git
+repositories recursively below that company directory.
+EOF
+}
+
+_list_company_projects() {
+    local company_root="${_project_root}/${_company}"
+
+    _require_cmd find "project discovery"
+
+    [[ -d "${company_root}" ]] || return 0
+
+    find "${company_root}" \
+        -mindepth 2 \
+        \( -type d -o -type f \) \
+        -name .git \
+        -printf '%h\n' 2>/dev/null
+}
+
+_rel_to_company() {
+    local absolute="$1"
+    local company_root="${_project_root}/${_company}"
+    printf '%s\n' "${absolute#"${company_root}/"}"
+}
+
+_session_from_project() {
+    local rel="$1"
+    local s="${_company}__${rel}"
+
+    s="${s//\//__}"
+    s="${s//:/_}"
+    s="${s//./_}"
+
+    printf '%s\n' "${s}"
+}
+
+_session_belongs_to_company() {
+    local session="$1"
+    [[ "${session}" == "${_company}__"* ]]
+}
+
+_pick_project() {
+    local selection
+    local marker label kind value
+
+    _require_cmd fzf "interactive project picker"
+    _require_cmd find "interactive project picker"
+    _require_cmd sort "interactive project picker"
+
+    selection="$(
+        {
+            while IFS= read -r sess; do
+                [[ -n "${sess}" ]] || continue
+                _session_belongs_to_company "${sess}" || continue
+
+                label="${sess#"${_company}__"}"
+                label="${label//__//}"
+
+                printf '●\t%s\tsession\t%s\n' \
+                    "${label}" \
+                    "${sess}"
+            done < <(_tmux list-sessions -F '#{session_name}' 2>/dev/null)
+
+            while IFS= read -r project; do
+                [[ -n "${project}" ]] || continue
+
+                printf ' \t%s\tproject\t%s\n' \
+                    "$(_rel_to_company "${project}")" \
+                    "${project}"
+            done < <(_list_company_projects)
+        } |
+        sort -t $'\t' -k2,2 |
+        fzf \
+            --delimiter=$'\t' \
+            --with-nth=1,2 \
+            --prompt="${_company}> " \
+            --header='● active tmux session'
+    )" || return 1
+
+    IFS=$'\t' read -r marker label kind value <<< "${selection}"
+
+    case "${kind}" in
+        session)
+            _session="${value}"
+            _project_dir=""
+            ;;
+        project)
+            _project_dir="${value}"
+            _project_rel="$(_rel_to_company "${_project_dir}")"
+            _session="$(_session_from_project "${_project_rel}")"
+            ;;
+        *)
+            _error "Invalid picker result"
+            ;;
+    esac
+}
+
+_resolve_project() {
+    local arg="$1"
+    local company_root="${_project_root}/${_company}"
+    local exact="${company_root}/${arg}"
+    local project
+    local match=""
+    local count=0
+
+    # If caller passed the generated tmux session name explicitly.
+    if _tmux has-session -t "=${arg}" 2>/dev/null && _session_belongs_to_company "${arg}"; then
+        _session="${arg}"
+        _project_dir=""
+        return 0
+    fi
+
+    # Exact relative path below company namespace.
+    if [[ -d "${exact}" ]]; then
+        _project_dir="${exact}"
+        _project_rel="${arg}"
+        _session="$(_session_from_project "${_project_rel}")"
+        return 0
+    fi
+
+    # Unique git-repository basename anywhere below company.
+    _require_cmd find "project basename lookup"
+
+    while IFS= read -r project; do
+        [[ -n "${project}" ]] || continue
+
+        if [[ "${project##*/}" == "${arg}" ]]; then
+            match="${project}"
+            ((count++))
+        fi
+    done < <(_list_company_projects)
+
+    case "${count}" in
+        1)
+            _project_dir="${match}"
+            _project_rel="$(_rel_to_company "${_project_dir}")"
+            _session="$(_session_from_project "${_project_rel}")"
+            ;;
+        0)
+            _error "No project '${arg}' found below ${company_root}"
+            ;;
+        *)
+            echo "Project name '${arg}' is ambiguous inside '${_company}'. Use one of:" >&2
+            while IFS= read -r project; do
+                [[ -n "${project}" ]] || continue
+                [[ "${project##*/}" == "${arg}" ]] || continue
+                printf '  %s\n' "$(_rel_to_company "${project}")" >&2
+            done < <(_list_company_projects)
+            exit 2
+            ;;
+    esac
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n)
+            shift
+            [[ $# -gt 0 ]] || _error "-n requires a window name"
+            _name="$1"
+            shift
+            ;;
+        -c|--check)
+            _check_dependencies
+            exit $?
+            ;;
+        -h|--help)
+            _usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            _error "Unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+[[ $# -gt 0 ]] || {
+    _usage >&2
+    exit 2
+}
+
+_company="$1"
+shift
+
+_company_root="${_project_root}/${_company}"
+
+if [[ ! -d "${_company_root}" ]]; then
+    _error "Company directory '${_company_root}' does not exist"
+fi
+
+if [[ $# -gt 0 ]]; then
+    _project_arg="$1"
+    shift
+    _resolve_project "${_project_arg}"
+else
+    _pick_project || exit 0
+fi
+
+_cmd=("$@")
+
+if [[ -n "${_project_dir}" ]]; then
+    _debug "Project ${_company}/${_project_rel} -> tmux session ${_session}"
+
+    if ! _tmux has-session -t "=${_session}" 2>/dev/null; then
+        _debug "Session ${_session} is not found, create it"
+
+        _tmux new-session \
+            -d \
+            -s "${_session}" \
+            -c "${_project_dir}" \
+            -n "${_name}" || \
+            _error "Failed to create tmux session ${_session}"
+    fi
+fi
+
+if ! _tmux has-session -t "=${_session}" 2>/dev/null; then
+    _error "Tmux session '${_session}' does not exist"
+fi
+
+if (( ${#_cmd[@]} > 0 )); then
+    if [[ -n "${_project_dir}" ]]; then
+        _cwd="${_project_dir}"
+    else
+        _cwd="${HOME}"
+    fi
+
+    _debug "Run command in ${_session}: ${_cmd[*]}"
+
+    _tmux new-window \
+        -t "=${_session}" \
+        -n "${_name}" \
+        -c "${_cwd}" \
+        "${_cmd[@]}"
+fi
+
+_debug "Attach/switch to session ${_session}"
+
+if [[ -z "${TMUX:-}" ]]; then
+    _tmux attach-session -t "=${_session}"
+else
+    _tmux switch-client -t "=${_session}"
+fi

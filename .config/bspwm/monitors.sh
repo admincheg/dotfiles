@@ -10,7 +10,7 @@ set_monitor() {
 	  xrandr --output ${i} --auto
     fi
 
-    bspc monitor ${i} -d I II III IV V
+    bspc monitor ${i} -d I II III IV V VI VII VIII IX X
     left=${i}
   done
 
@@ -22,3 +22,9 @@ set_monitor() {
     xrandr --output eDP --primary
   fi
 }
+
+if [[ $(basename "$0") == "monitors.sh" ]]; then
+  echo "[:::] Direct run. Reconfigure monitors."
+  declare -x PATH="/home/owlbook/.bin:/home/owlbook/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"
+  set_monitor
+fi
